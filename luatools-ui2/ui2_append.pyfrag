@@ -1,0 +1,392 @@
+
+
+# ---- native.2 UI parity overlay -------------------------------------------------
+from pathlib import Path as _UiPath
+import re as _ui_re
+
+_ui_project = P
+_ui_csproj = _ui_project / 'LuaToolsGui.csproj'
+_ui_cs = _ui_csproj.read_text(encoding='utf-8-sig')
+if 'Material.Icons.Avalonia' not in _ui_cs:
+    anchor = '<PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" />'
+    repl = anchor + '\n    <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />'
+    if anchor not in _ui_cs:
+        raise SystemExit('UI2: csproj package anchor missing')
+    _ui_cs = _ui_cs.replace(anchor, repl, 1)
+_ui_csproj.write_text(_ui_cs, encoding='utf-8')
+
+_ui_app = r'''<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:LuaToolsGui"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="LuaToolsGui.App"
+             RequestedThemeVariant="Dark">
+    <Application.Styles>
+        <FluentTheme />
+        <materialIcons:MaterialIconStyles />
+
+        <!-- Linux-native Fluent/Mica approximation. The Windows build gets its depth from WPF-UI Mica;
+             on Linux we provide the visual hierarchy explicitly so transparent surfaces do not collapse
+             into a flat black window. -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource AppBackdropBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Background" Value="#10FFFFFF" />
+            <Setter Property="BorderBrush" Value="#18FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Foreground" Value="#E8FFFFFF" />
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#19FFFFFF" />
+            <Setter Property="BorderBrush" Value="#2AFFFFFF" />
+        </Style>
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="#22FFFFFF" />
+        </Style>
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="#7C5CFC" />
+            <Setter Property="BorderBrush" Value="#9B87FF" />
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.accent:pointerover">
+            <Setter Property="Background" Value="#8B6BFF" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#0EFFFFFF" />
+            <Setter Property="BorderBrush" Value="#1CFFFFFF" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Foreground" Value="#F2FFFFFF" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="#0EFFFFFF" />
+            <Setter Property="BorderBrush" Value="#1CFFFFFF" />
+            <Setter Property="Foreground" Value="#F2FFFFFF" />
+        </Style>
+        <Style Selector="Separator">
+            <Setter Property="Background" Value="#14FFFFFF" />
+        </Style>
+    </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <SolidColorBrush x:Key="AppBackdropBrush" Color="#191A1F" />
+            <SolidColorBrush x:Key="AppSurfaceBrush" Color="#D91D1E24" />
+            <SolidColorBrush x:Key="AppSurfaceRaisedBrush" Color="#E624252C" />
+            <SolidColorBrush x:Key="AppNavBrush" Color="#E316171C" />
+            <SolidColorBrush x:Key="AppAccentBrush" Color="#8B5CF6" />
+            <SolidColorBrush x:Key="AppAccentSoftBrush" Color="#338B5CF6" />
+
+            <!-- WPF-UI compatibility keys used throughout the ported views. -->
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#F4FFFFFF" />
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#C9FFFFFF" />
+            <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#8AFFFFFF" />
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#001A1B20" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#0BFFFFFF" />
+            <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#1CFFFFFF" />
+            <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#402D2D34" />
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#10FFFFFF" />
+            <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#20FFFFFF" />
+            <SolidColorBrush x:Key="SystemFillColorCautionBackgroundBrush" Color="#332A2200" />
+            <SolidColorBrush x:Key="SystemFillColorCautionBrush" Color="#FFFFB44C" />
+            <SolidColorBrush x:Key="SystemFillColorSuccessBrush" Color="#FF34D399" />
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF8B5CF6" />
+            <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#10FFFFFF" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#14FFFFFF" />
+
+            <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+            <local:NullToCollapsedConverter x:Key="NullToCollapsed" />
+            <local:StatusToBrushConverter x:Key="StatusToBrush" />
+            <local:ImagePathToSourceConverter x:Key="ImagePathToSource" />
+            <local:EqualityMultiConverter x:Key="EqualityMulti" />
+            <local:MinHeightToVisibilityConverter x:Key="MinHeightToVis" />
+            <local:FilterOptionDisplayConverter x:Key="FilterOptionDisplay" />
+            <local:BoolToVisConverter x:Key="BoolToVis" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
+'''
+(_ui_project / 'App.axaml').write_text(_ui_app, encoding='utf-8')
+
+_ui_symbol = r'''using System;
+using System.Collections.Generic;
+using Avalonia;
+using Material.Icons;
+using Material.Icons.Avalonia;
+
+namespace LuaToolsGui.Controls;
+
+/// <summary>
+/// Font-independent replacement for WPF-UI SymbolIcon. The first Linux port depended on Segoe Fluent
+/// Icons being installed system-wide, which produces tofu squares on normal Linux desktops. This control
+/// maps the old WPF glyphs to vector Material Design icons bundled through NuGet, so AppImage rendering
+/// is deterministic on CachyOS/Wayland/X11.
+/// </summary>
+public class SymbolIcon : MaterialIcon
+{
+    public static readonly StyledProperty<string> GlyphProperty =
+        AvaloniaProperty.Register<SymbolIcon, string>(nameof(Glyph), string.Empty);
+
+    private static readonly Dictionary<string, string> LegacyMap = new(StringComparer.Ordinal)
+    {
+        ["\\uE821"] = "ControllerClassicOutline",
+        ["\\uE77B"] = "AccountOutline",
+        ["\\uE713"] = "CogOutline",
+        ["\\uEA83"] = "SourceBranch",
+        ["\\uE73E"] = "CheckCircleOutline",
+        ["\\uE8D7"] = "KeyVariant",
+        ["\\uE734"] = "StarOutline",
+        ["\\uE896"] = "TrayArrowDown",
+        ["\\uE80F"] = "ControllerClassicOutline",
+        ["\\uE8C8"] = "ContentCopy",
+        ["\\uE753"] = "TuneVariant",
+        ["\\uE735"] = "InformationOutline",
+        ["\\uE7BA"] = "AlertOutline",
+        ["\\uE74C"] = "PuzzleOutline",
+        ["\\uE7B6"] = "TagOutline",
+        ["\\uE711"] = "CloseCircleOutline",
+        ["\\uE710"] = "StorefrontOutline",
+        ["\\uE945"] = "Update",
+        ["\\uE946"] = "LockOutline",
+    };
+
+    private static readonly Dictionary<string, string> SemanticMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["home"] = "HomeVariantOutline",
+        ["add"] = "PlusCircleOutline",
+        ["manage"] = "ControllerClassicOutline",
+        ["depots"] = "SourceBranch",
+        ["tools"] = "ToolboxOutline",
+        ["mode"] = "TuneVariant",
+        ["fixes"] = "ShieldCheckOutline",
+        ["plugin"] = "PuzzleOutline",
+        ["restart"] = "Restart",
+        ["downloads"] = "DownloadOutline",
+        ["settings"] = "CogOutline",
+        ["account"] = "AccountCircleOutline",
+        ["app"] = "Tools",
+    };
+
+    public SymbolIcon()
+    {
+        Width = 18;
+        Height = 18;
+        IconSize = 18;
+    }
+
+    public string Glyph
+    {
+        get => GetValue(GlyphProperty);
+        set => SetValue(GlyphProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == GlyphProperty)
+            ApplyGlyph(change.GetNewValue<string>());
+    }
+
+    private void ApplyGlyph(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            Kind = null;
+            return;
+        }
+
+        string name = raw;
+        if (LegacyMap.TryGetValue(raw, out var legacy)) name = legacy;
+        else if (SemanticMap.TryGetValue(raw, out var semantic)) name = semantic;
+
+        if (Enum.TryParse<MaterialIconKind>(name, true, out var kind))
+        {
+            Kind = kind;
+            return;
+        }
+
+        if (Enum.TryParse<MaterialIconKind>("CircleOutline", true, out var fallback))
+            Kind = fallback;
+        else
+            Kind = null;
+    }
+}
+'''
+(_ui_project / 'Controls' / 'SymbolIcon.cs').write_text(_ui_symbol, encoding='utf-8')
+
+_ui_main = r'''<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ctrls="clr-namespace:LuaToolsGui.Controls"
+        xmlns:vm="clr-namespace:LuaToolsGui.ViewModels"
+        xmlns:views="clr-namespace:LuaToolsGui.Views"
+        xmlns:res="clr-namespace:LuaToolsGui.Resources"
+        x:Class="LuaToolsGui.MainWindow"
+        Title="LuaTools"
+        Width="1080"
+        Height="720"
+        MinWidth="760"
+        MinHeight="560"
+        Background="{DynamicResource AppBackdropBrush}"
+        WindowStartupLocation="CenterScreen"
+        mc:Ignorable="d">
+
+    <Window.Styles>
+        <Style Selector="Button.navItem">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="6,2" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Foreground" Value="#DCE2EA" />
+        </Style>
+        <Style Selector="Button.navItem:pointerover">
+            <Setter Property="Background" Value="#12FFFFFF" />
+            <Setter Property="BorderBrush" Value="#12FFFFFF" />
+        </Style>
+        <Style Selector="Button.navItem:pressed">
+            <Setter Property="Background" Value="#1D8B5CF6" />
+            <Setter Property="BorderBrush" Value="#338B5CF6" />
+        </Style>
+        <Style Selector="Button.discordButton">
+            <Setter Property="Margin" Value="10,8,10,5" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="#6D5DFB" />
+            <Setter Property="BorderBrush" Value="#8C7BFF" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="40,*">
+        <Border Grid.Row="0"
+                Background="#D918191E"
+                BorderBrush="#16FFFFFF"
+                BorderThickness="0,0,0,1">
+            <Grid Margin="13,0" ColumnDefinitions="Auto,Auto,*,Auto">
+                <Border Width="24" Height="24" CornerRadius="6" Background="#238B5CF6" VerticalAlignment="Center">
+                    <ctrls:SymbolIcon Glyph="app" Foreground="#C4B5FD" Width="15" Height="15" />
+                </Border>
+                <TextBlock Grid.Column="1"
+                           Margin="9,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="#F3F4F6"
+                           Text="LuaTools" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" ColumnDefinitions="210,*">
+            <Border Grid.Column="0"
+                    Background="{DynamicResource AppNavBrush}"
+                    BorderBrush="#14FFFFFF"
+                    BorderThickness="0,0,1,0">
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Top" Margin="4,8,4,0">
+                        <Button Classes="navItem" Command="{Binding NavigateHomeCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="home" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Home}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateDownloadCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="add" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Add}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateManageCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="manage" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Manage}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateBuildsCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="depots" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Builds}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateToolsCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="tools" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="Tools" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateModeCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="mode" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Mode}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateFixesCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="fixes" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Fixes}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigatePluginCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="plugin" Foreground="#B8A6FF"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="Plugin" /></Grid>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel DockPanel.Dock="Bottom" Margin="4,0,4,8">
+                        <Border Margin="8,0,8,7" Height="1" Background="#12FFFFFF" />
+                        <Button Classes="navItem" Click="RestartSteam_Click">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="restart" Foreground="#94A3B8"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_RestartSteam}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateDownloadsCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="downloads" Foreground="#94A3B8"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Downloads}" /></Grid>
+                        </Button>
+                        <Button Classes="navItem" Command="{Binding NavigateSettingsCommand}">
+                            <Grid ColumnDefinitions="28,*"><ctrls:SymbolIcon Glyph="settings" Foreground="#94A3B8"/><TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_Settings}" /></Grid>
+                        </Button>
+                        <Button Classes="discordButton"
+                                IsVisible="{Binding IsGuest}"
+                                Command="{Binding SignInCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="7"><ctrls:SymbolIcon Glyph="account" Width="16" Height="16" Foreground="White"/><TextBlock VerticalAlignment="Center" Text="{x:Static res:Strings.Nav_SignInDiscord}" /></StackPanel>
+                        </Button>
+                        <TextBlock Margin="12,5,10,0"
+                                   Text="{Binding SignInError}"
+                                   TextWrapping="Wrap"
+                                   Foreground="#F87171"
+                                   FontSize="11"
+                                   IsVisible="{Binding SignInError, Converter={StaticResource NullToCollapsed}}" />
+                        <TextBlock Margin="12,5,10,0"
+                                   Text="{Binding FooterStatus}"
+                                   FontSize="11"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="#6B7280" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="1"
+                    Margin="8,8,12,12"
+                    Background="#4A101116"
+                    BorderBrush="#12FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    ClipToBounds="True">
+                <ContentControl x:Name="PageHost" />
+            </Border>
+        </Grid>
+
+        <views:OnboardingView Grid.RowSpan="2" IsVisible="{Binding Onboarding.IsOpen}" />
+    </Grid>
+</Window>
+'''
+(_ui_project / 'MainWindow.axaml').write_text(_ui_main, encoding='utf-8')
+
+_ui_home_path = _ui_project / 'Views' / 'HomeView.axaml'
+_ui_home = _ui_home_path.read_text(encoding='utf-8-sig')
+_ui_home = _ui_home.replace(
+    '<ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />',
+    '<ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="Stretch" VerticalAlignment="Center" />'
+)
+_ui_home = _ui_home.replace('Background="#0DFFFFFF" BorderBrush="#14FFFFFF"', 'Background="#14FFFFFF" BorderBrush="#20FFFFFF"')
+_ui_home = _ui_home.replace('<StackPanel MaxWidth="760" Margin="8,16,16,24">', '<StackPanel MaxWidth="820" Margin="22,22,22,28">')
+_ui_home_path.write_text(_ui_home, encoding='utf-8')
+
+for _rel in ['Views/DropZone.axaml', 'Views/ManageView.axaml', 'Views/BuildsView.axaml', 'Views/PluginView.axaml', 'Views/ModeView.axaml', 'Views/SettingsView.axaml', 'Views/DownloadView.axaml', 'Views/DownloadsView.axaml']:
+    _p = _ui_project / _rel
+    if not _p.exists():
+        continue
+    _s = _p.read_text(encoding='utf-8-sig')
+    _s = _s.replace('Background="#0DFFFFFF"', 'Background="#12FFFFFF"')
+    _s = _s.replace('BorderBrush="#14FFFFFF"', 'BorderBrush="#1CFFFFFF"')
+    _p.write_text(_s, encoding='utf-8')
+
+print('LuaTools Native UI parity overlay v2 applied')
