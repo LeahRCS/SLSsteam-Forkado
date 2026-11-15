@@ -28,6 +28,15 @@ jobs:
           tar -xzf LuaTools-Native-1.3.3-Realization.tar.gz -C workkit --strip-components=1
           # Hotfix candidate bundle v1: the base Avalonia fork has no Services/GameData directory.
           sed -i "/# 2) Game-tools implementation reconstructed/a (P/'Services'/'GameData').mkdir(parents=True, exist_ok=True)" workkit/scripts/apply_overlay.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path("workkit/scripts/apply_overlay.py")
+          s=p.read_text()
+          old="write(sam_service,s)"
+          new='s=s.replace("_coverCache.GetCoverPathOrUrl(game.Id)", "_coverCache.GetLocalPath(game.Id) ?? $\\\"https://cdn.cloudflare.steamstatic.com/steam/apps/{game.Id}/header.jpg\\\"")\\nwrite(sam_service,s)'
+          if old not in s: raise SystemExit("SamService patch anchor missing")
+          p.write_text(s.replace(old,new,1))
+          PY
           python -m py_compile workkit/scripts/apply_overlay.py
           bash -n workkit/scripts/build-appimage.sh
 
