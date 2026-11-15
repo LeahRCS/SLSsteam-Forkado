@@ -203,7 +203,7 @@ public class SymbolIcon : MaterialIcon
             return;
         }
 
-        string name = raw;
+        IsVisible = true;\n        string name = raw;
         if (LegacyMap.TryGetValue(raw, out var legacy)) name = legacy;
         else if (SemanticMap.TryGetValue(raw, out var semantic)) name = semantic;
 
