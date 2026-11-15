@@ -33,7 +33,8 @@ jobs:
           p=Path("workkit/scripts/apply_overlay.py")
           s=p.read_text()
           old="write(sam_service,s)"
-          new='s=s.replace("_coverCache.GetCoverPathOrUrl(game.Id)", "_coverCache.GetLocalPath(game.Id) ?? $\\\"https://cdn.cloudflare.steamstatic.com/steam/apps/{game.Id}/header.jpg\\\"")\\nwrite(sam_service,s)'
+          new="""s=s.replace("_coverCache.GetCoverPathOrUrl(game.Id)", '_coverCache.GetLocalPath(game.Id) ?? $"https://cdn.cloudflare.steamstatic.com/steam/apps/{game.Id}/header.jpg"')
+          write(sam_service,s)"""
           if old not in s: raise SystemExit("SamService patch anchor missing")
           p.write_text(s.replace(old,new,1))
           PY
