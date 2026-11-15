@@ -125,10 +125,9 @@ using Material.Icons.Avalonia;
 namespace LuaToolsGui.Controls;
 
 /// <summary>
-/// Font-independent replacement for WPF-UI SymbolIcon. The first Linux port depended on Segoe Fluent
-/// Icons being installed system-wide, which produces tofu squares on normal Linux desktops. This control
-/// maps the old WPF glyphs to vector Material Design icons bundled through NuGet, so AppImage rendering
-/// is deterministic on CachyOS/Wayland/X11.
+/// Font-independent replacement for WPF-UI SymbolIcon. Linux must not depend on Segoe Fluent Icons
+/// being installed by the host desktop, so all glyphs are mapped to vector Material icons shipped
+/// with the AppImage.
 /// </summary>
 public class SymbolIcon : MaterialIcon
 {
@@ -137,25 +136,25 @@ public class SymbolIcon : MaterialIcon
 
     private static readonly Dictionary<string, string> LegacyMap = new(StringComparer.Ordinal)
     {
-        ["\\uE821"] = "ControllerClassicOutline",
-        ["\\uE77B"] = "AccountOutline",
-        ["\\uE713"] = "CogOutline",
-        ["\\uEA83"] = "SourceBranch",
-        ["\\uE73E"] = "CheckCircleOutline",
-        ["\\uE8D7"] = "KeyVariant",
-        ["\\uE734"] = "StarOutline",
-        ["\\uE896"] = "TrayArrowDown",
-        ["\\uE80F"] = "ControllerClassicOutline",
-        ["\\uE8C8"] = "ContentCopy",
-        ["\\uE753"] = "TuneVariant",
-        ["\\uE735"] = "InformationOutline",
-        ["\\uE7BA"] = "AlertOutline",
-        ["\\uE74C"] = "PuzzleOutline",
-        ["\\uE7B6"] = "TagOutline",
-        ["\\uE711"] = "CloseCircleOutline",
-        ["\\uE710"] = "StorefrontOutline",
-        ["\\uE945"] = "Update",
-        ["\\uE946"] = "LockOutline",
+        ["\uE821"] = "ControllerClassicOutline",
+        ["\uE77B"] = "AccountOutline",
+        ["\uE713"] = "CogOutline",
+        ["\uEA83"] = "SourceBranch",
+        ["\uE73E"] = "CheckCircleOutline",
+        ["\uE8D7"] = "KeyVariant",
+        ["\uE734"] = "StarOutline",
+        ["\uE896"] = "TrayArrowDown",
+        ["\uE80F"] = "ControllerClassicOutline",
+        ["\uE8C8"] = "ContentCopy",
+        ["\uE753"] = "TuneVariant",
+        ["\uE735"] = "InformationOutline",
+        ["\uE7BA"] = "AlertOutline",
+        ["\uE74C"] = "PuzzleOutline",
+        ["\uE7B6"] = "TagOutline",
+        ["\uE711"] = "CloseCircleOutline",
+        ["\uE710"] = "StorefrontOutline",
+        ["\uE945"] = "Update",
+        ["\uE946"] = "LockOutline",
     };
 
     private static readonly Dictionary<string, string> SemanticMap = new(StringComparer.OrdinalIgnoreCase)
@@ -179,7 +178,6 @@ public class SymbolIcon : MaterialIcon
     {
         Width = 18;
         Height = 18;
-        IconSize = 18;
     }
 
     public string Glyph
@@ -199,11 +197,12 @@ public class SymbolIcon : MaterialIcon
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
-            Kind = null;
+            IsVisible = false;
             return;
         }
 
-        IsVisible = true;\n        string name = raw;
+        IsVisible = true;
+        string name = raw;
         if (LegacyMap.TryGetValue(raw, out var legacy)) name = legacy;
         else if (SemanticMap.TryGetValue(raw, out var semantic)) name = semantic;
 
@@ -216,7 +215,7 @@ public class SymbolIcon : MaterialIcon
         if (Enum.TryParse<MaterialIconKind>("CircleOutline", true, out var fallback))
             Kind = fallback;
         else
-            Kind = null;
+            Kind = default;
     }
 }
 '''
