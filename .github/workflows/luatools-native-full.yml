@@ -1,0 +1,48 @@
+name: LuaTools Native 1.3.3 Candidate
+
+on:
+  push:
+    branches: [ "ci/luatools-native-1.3.3" ]
+    paths:
+      - 'luatools-bundle/**'
+      - '.github/workflows/luatools-native-full.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout build bundle
+        uses: actions/checkout@v4
+
+      - name: Reassemble build kit
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat luatools-bundle/part*.b64 | base64 -d > LuaTools-Native-1.3.3-Realization.tar.gz
+          mkdir -p workkit
+          tar -xzf LuaTools-Native-1.3.3-Realization.tar.gz -C workkit --strip-components=1
+          python -m py_compile workkit/scripts/apply_overlay.py
+          bash -n workkit/scripts/build-appimage.sh
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build candidate AppImage
+        run: ./workkit/scripts/build-appimage.sh
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: LuaTools-1.3.3-native.1-x86_64
+          path: |
+            workkit/dist/*.AppImage
+            workkit/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
