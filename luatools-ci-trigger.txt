@@ -1,0 +1,1 @@
+Trigger LuaTools native AppImage baseline CI.
