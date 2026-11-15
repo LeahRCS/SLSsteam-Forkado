@@ -60,23 +60,53 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb imagemagick
+          sudo apt-get install -y -qq xvfb imagemagick openbox xdotool
           APPIMAGE="$(find workkit/dist -maxdepth 1 -name '*.AppImage' -type f | head -n1)"
           test -n "$APPIMAGE"
           chmod +x "$APPIMAGE"
+
           Xvfb :99 -screen 0 1366x768x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
           XVFB_PID=$!
           export DISPLAY=:99
           sleep 2
+          openbox >/tmp/openbox.log 2>&1 &
+          WM_PID=$!
+          sleep 2
+
           APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" >/tmp/luatools-ui.log 2>&1 &
           APP_PID=$!
-          sleep 7
-          import -window root workkit/dist/LuaTools-native.2-smoke.png || true
-          kill "$APP_PID" 2>/dev/null || true
-          kill "$XVFB_PID" 2>/dev/null || true
+
+          WIN=""
+          for i in $(seq 1 30); do
+            WIN="$(xdotool search --name '^LuaTools$' 2>/dev/null | head -n1 || true)"
+            [ -n "$WIN" ] && break
+            sleep 1
+          done
+          test -n "$WIN"
+          xdotool windowmap "$WIN" || true
+          xdotool windowactivate --sync "$WIN" || true
+          sleep 3
+          xwininfo -id "$WIN" >/tmp/luatools-xwininfo.txt
+          import -window "$WIN" workkit/dist/LuaTools-native.2-smoke.png
           test -s workkit/dist/LuaTools-native.2-smoke.png
+
+          MEAN="$(identify -format '%[fx:mean]' workkit/dist/LuaTools-native.2-smoke.png)"
+          python - "$MEAN" <<'PY'
+          import sys
+          mean=float(sys.argv[1])
+          print(f"captured-window-mean={mean:.6f}")
+          if mean <= 0.015:
+              raise SystemExit("Captured LuaTools window is effectively black")
+          PY
+
+          echo "---- LuaTools window ----"
+          cat /tmp/luatools-xwininfo.txt
           echo "---- LuaTools smoke log ----"
           cat /tmp/luatools-ui.log || true
+
+          kill "$APP_PID" 2>/dev/null || true
+          kill "$WM_PID" 2>/dev/null || true
+          kill "$XVFB_PID" 2>/dev/null || true
 
       - name: Rename candidate
         shell: bash
