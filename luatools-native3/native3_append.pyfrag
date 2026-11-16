@@ -23,6 +23,21 @@ _nav_repls = {
 for _old, _new in _nav_repls.items():
     _s = _s.replace(_old, _new)
 
+# Make the whole navigation row a hit target, not only its compact icon/text content.
+_s = _s.replace(
+    '<Setter Property="HorizontalContentAlignment" Value="Stretch" />',
+    '<Setter Property="HorizontalAlignment" Value="Stretch" />\n            <Setter Property="HorizontalContentAlignment" Value="Stretch" />',
+    1
+)
+_s = _s.replace(
+    '<StackPanel DockPanel.Dock="Top" Margin="4,8,4,0">',
+    '<StackPanel DockPanel.Dock="Top" Margin="4,8,4,0" HorizontalAlignment="Stretch">'
+)
+_s = _s.replace(
+    '<StackPanel DockPanel.Dock="Bottom" Margin="4,0,4,8">',
+    '<StackPanel DockPanel.Dock="Bottom" Margin="4,0,4,8" HorizontalAlignment="Stretch">'
+)
+
 # Keep Avalonia's native Button control theme/hit-testing. native.2 had replaced it with a custom
 # ControlTemplate solely to suppress Fluent's grey presenter; style the native presenter's visuals instead.
 _n3_button_template = r'''            <Setter Property="Template">
