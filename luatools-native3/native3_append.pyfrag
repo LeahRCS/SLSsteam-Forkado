@@ -92,16 +92,31 @@ if '_NavigateHome_Click' not in _s and 'private void NavigateHome_Click' not in 
 _s = _s.replace('using Avalonia.Interactivity;\n', 'using Avalonia.Interactivity;\nusing Avalonia.Input;\n', 1)
 _s = _s.replace(
     '        InitializeComponent();\n',
-    '        InitializeComponent();\n        if (Environment.GetEnvironmentVariable("LUATOOLS_SMOKE_TEST") == "1")\n            AddHandler(InputElement.PointerPressedEvent, SmokePointerPressed, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, true);\n',
+    '        InitializeComponent();\n        if (Environment.GetEnvironmentVariable("LUATOOLS_SMOKE_TEST") == "1")\n        {\n            AddHandler(InputElement.PointerPressedEvent, SmokePointerPressed, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, true);\n            AddHandler(InputElement.PointerReleasedEvent, SmokePointerReleased, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, true);\n        }\n',
     1
 )
-_smoke_method = r'''    private void SmokePointerPressed(object? sender, PointerPressedEventArgs e)
+_smoke_method = r'''    private static string SmokeRoute(object? source)
+    {
+        var chain = new List<string>();
+        for (var n = source as StyledElement; n is not null; n = n.Parent)
+        {
+            string name = n is Control c && !string.IsNullOrWhiteSpace(c.Name) ? ":" + c.Name : "";
+            chain.Add(n.GetType().Name + name);
+            if (chain.Count >= 16) break;
+        }
+        return string.Join(" > ", chain);
+    }
+
+    private void SmokePointerPressed(object? sender, PointerPressedEventArgs e)
     {
         var p = e.GetPosition(this);
-        string source = e.Source is Control c
-            ? $"{c.GetType().Name}:{c.Name ?? "<unnamed>"}"
-            : e.Source?.GetType().Name ?? "<null>";
-        Console.Error.WriteLine($"SMOKE_POINTER x={p.X:F1} y={p.Y:F1} source={source} handled={e.Handled}");
+        Console.Error.WriteLine($"SMOKE_PRESS x={p.X:F1} y={p.Y:F1} handled={e.Handled} route={SmokeRoute(e.Source)}");
+    }
+
+    private void SmokePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var p = e.GetPosition(this);
+        Console.Error.WriteLine($"SMOKE_RELEASE x={p.X:F1} y={p.Y:F1} handled={e.Handled} route={SmokeRoute(e.Source)}");
     }
 
 '''
