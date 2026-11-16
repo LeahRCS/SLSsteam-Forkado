@@ -1,0 +1,493 @@
+
+# ---- native.3 functional Linux parity -------------------------------------------
+from pathlib import Path as _N3Path
+import re as _n3re
+
+_n3_project = P
+
+# 1) Navigation: use real click handlers, not stale CommunityToolkit command names.
+_n3_main = _n3_project / 'MainWindow.axaml'
+_s = _n3_main.read_text(encoding='utf-8-sig')
+_nav_repls = {
+    'Command="{Binding NavigateHomeCommand}"': 'Click="NavigateHome_Click"',
+    'Command="{Binding NavigateDownloadCommand}"': 'Click="NavigateAdd_Click"',
+    'Command="{Binding NavigateManageCommand}"': 'Click="NavigateManage_Click"',
+    'Command="{Binding NavigateBuildsCommand}"': 'Click="NavigateBuilds_Click"',
+    'Command="{Binding NavigateToolsCommand}"': 'Click="NavigateTools_Click"',
+    'Command="{Binding NavigateModeCommand}"': 'Click="NavigateMode_Click"',
+    'Command="{Binding NavigateFixesCommand}"': 'Click="NavigateFixes_Click"',
+    'Command="{Binding NavigatePluginCommand}"': 'Click="NavigatePlugin_Click"',
+    'Command="{Binding NavigateDownloadsCommand}"': 'Click="NavigateDownloads_Click"',
+    'Command="{Binding NavigateSettingsCommand}"': 'Click="NavigateSettings_Click"',
+}
+for _old, _new in _nav_repls.items():
+    _s = _s.replace(_old, _new)
+_n3_main.write_text(_s, encoding='utf-8')
+
+_n3_maincs = _n3_project / 'MainWindow.axaml.cs'
+_s = _n3_maincs.read_text(encoding='utf-8-sig')
+_handler_anchor = '    private void RestartSteam_Click(object? sender, RoutedEventArgs e)\n'
+if '_NavigateHome_Click' not in _s and 'private void NavigateHome_Click' not in _s:
+    handlers = r'''    // Native Linux navigation is wired directly to the view host. The earlier port bound
+    // to stale/nonexistent generated command names, so most buttons rendered but did nothing.
+    private void NavigateHome_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(HomeView));
+    private void NavigateAdd_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(DownloadView));
+    private void NavigateManage_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(ManageView));
+    private void NavigateBuilds_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(BuildsView));
+    private void NavigateTools_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(GameToolsView));
+    private void NavigateMode_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(ModeView));
+    private void NavigateFixes_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(FixesView));
+    private void NavigatePlugin_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(PluginView));
+    private void NavigateDownloads_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(DownloadsView));
+    private void NavigateSettings_Click(object? sender, RoutedEventArgs e) => Navigate(typeof(SettingsView));
+
+'''
+    if _handler_anchor not in _s:
+        raise SystemExit('native.3: MainWindow handler anchor missing')
+    _s = _s.replace(_handler_anchor, handlers + _handler_anchor, 1)
+_n3_maincs.write_text(_s, encoding='utf-8')
+
+# 2) Linux-only LTSP plugin manager. No winmm.dll, cmd.exe, NTFS junction or Steam.exe assumptions.
+_n3_plugin = r'''using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Net.Http;
+using System.Text.Json;
+using LuaToolsGui.Models;
+
+namespace LuaToolsGui.Services;
+
+public sealed record PluginStatus(
+    bool FrontendInstalled,
+    bool DllInstalled,      // Linux UI compatibility name: this is the native CEF bridge marker
+    bool DllMatches,        // true when the native bridge marker is healthy
+    string? InstalledTag,
+    string? LatestTag,
+    bool UpdateAvailable,
+    bool MillenniumPresent,
+    bool Offline,
+    bool Port8080Busy);
+
+/// <summary>
+/// Native Linux LTSP manager.
+///
+/// The Windows LuaLoader mechanism (winmm.dll + cmd.exe junction) is intentionally not used.
+/// On Linux the plugin is:
+///   1. LTSP's platform-neutral frontend (plugin.zip) in LuaTools' XDG config directory;
+///   2. Steam CEF remote debugging enabled by .cef-enable-remote-debugging and the launch flag;
+///   3. LuaTools' own CefInjectorService injecting the frontend into Steam store tabs;
+///   4. an XDG autostart entry keeping the AppImage backend alive in the tray across sessions.
+///
+/// No root access and no Millennium installation are required.
+/// </summary>
+public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjectorService injector)
+{
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+    private static readonly HttpClient PortProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(800) };
+
+    private const string PluginZipAsset = "plugin.zip";
+    private const string CdpMarkerName = ".cef-enable-remote-debugging";
+    private const int CdpPort = 8080;
+    private const string AutostartFileName = "luatools-cef-bridge.desktop";
+
+    private static string FrontendDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "plugin");
+    private static string LuatoolsJsPath => Path.Combine(FrontendDir, "public", "luatools.js");
+    private static string ManifestPath => Path.Combine(FrontendDir, "installed.json");
+
+    private string? SteamDir => steam.EffectivePath;
+    private string? CdpMarkerPath => SteamDir is { } s ? Path.Combine(s, CdpMarkerName) : null;
+
+    private static string AutostartPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".config", "autostart", AutostartFileName);
+
+    private GithubRelease? _cachedLatest;
+
+    public bool MillenniumPresent =>
+        SteamDir is { } s &&
+        (Directory.Exists(Path.Combine(s, "millennium"))
+         || File.Exists(Path.Combine(s, "ubuntu12_64", "libXtst.so.6"))
+         || File.Exists(Path.Combine(s, "ubuntu12_32", "libXtst.so.6")));
+
+    private sealed class Manifest
+    {
+        public string? Tag { get; set; }
+        public string? ZipSha { get; set; }
+
+        // Read legacy native.2/Windows-shaped manifests so we can safely remove only files that LuaTools
+        // itself previously wrote into a Linux Steam root.
+        public Dictionary<string, string>? DllShas { get; set; }
+
+        public bool MarkerCreatedByLuaTools { get; set; }
+        public bool AutostartCreatedByLuaTools { get; set; }
+    }
+
+    private static Manifest? ReadManifest()
+    {
+        try
+        {
+            return File.Exists(ManifestPath)
+                ? JsonSerializer.Deserialize<Manifest>(File.ReadAllText(ManifestPath), JsonOpts)
+                : null;
+        }
+        catch { return null; }
+    }
+
+    private static void WriteManifest(Manifest m)
+    {
+        Directory.CreateDirectory(FrontendDir);
+        File.WriteAllText(ManifestPath, JsonSerializer.Serialize(m, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    public async Task<GithubRelease?> FetchLatestAsync(bool force, CancellationToken ct = default)
+    {
+        if (!force && _cachedLatest is not null) return _cachedLatest;
+        string url = $"https://api.github.com/repos/{AppConfig.PluginReleasesOwner}/{AppConfig.PluginReleasesRepo}/releases/latest";
+        try
+        {
+            using var res = await gh.SendAsync(url, ct);
+            if (res is null || !res.IsSuccessStatusCode) return null;
+            var rel = JsonSerializer.Deserialize<GithubRelease>(await res.Content.ReadAsStringAsync(ct), JsonOpts);
+            if (rel is not null) _cachedLatest = rel;
+            return rel;
+        }
+        catch { return null; }
+    }
+
+    public bool IsInstalledLocally() =>
+        File.Exists(LuatoolsJsPath) && MarkerExists();
+
+    public async Task<PluginStatus> GetStatusAsync(bool force = false, CancellationToken ct = default)
+    {
+        bool frontend = File.Exists(LuatoolsJsPath);
+        bool bridge = MarkerExists();
+        bool portBusy = await IsPort8080BusyAsync();
+        var manifest = ReadManifest();
+        var latest = await FetchLatestAsync(force, ct);
+
+        if (latest is null)
+            return new PluginStatus(frontend, bridge, bridge, manifest?.Tag, null, false,
+                MillenniumPresent, Offline: true, portBusy);
+
+        var zip = FindAsset(latest, PluginZipAsset);
+        bool zipCurrent = zip is null
+            || AssetHash.ParseDigest(zip.Digest) is not { } latestSha
+            || string.Equals(manifest?.ZipSha, latestSha, StringComparison.OrdinalIgnoreCase);
+
+        bool installed = frontend && bridge;
+        bool update = installed && (manifest?.Tag != latest.TagName || !zipCurrent);
+
+        return new PluginStatus(frontend, bridge, bridge, manifest?.Tag, latest.TagName, update,
+            MillenniumPresent, Offline: false, portBusy);
+    }
+
+    public async Task<(bool ok, string? error)> InstallAsync(
+        IProgress<double?>? progress, CancellationToken ct = default)
+    {
+        if (SteamDir is not { } steamDir || !Directory.Exists(steamDir))
+            return (false, Resources.Strings.Plugin_Err_SteamNotFound);
+
+        var latest = await FetchLatestAsync(force: true, ct);
+        if (latest is null)
+            return (false, Resources.Strings.Plugin_Err_GithubUnreachable);
+
+        var zipAsset = FindAsset(latest, PluginZipAsset);
+        if (zipAsset is null)
+            return (false, string.Format(Resources.Strings.Plugin_Err_MissingAssets, latest.TagName, PluginZipAsset, "Linux CEF bridge"));
+
+        string tmp = Path.Combine(Path.GetTempPath(), "luatools-linux-plugin-" + Guid.NewGuid().ToString("N"));
+        string stage = Path.Combine(tmp, "stage");
+        Directory.CreateDirectory(stage);
+
+        try
+        {
+            string zipPath = Path.Combine(tmp, PluginZipAsset);
+            await gh.DownloadAsync(zipAsset.DownloadUrl, zipPath, progress, ct);
+
+            if (!AssetHash.Matches(zipPath, zipAsset.Digest))
+                return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, PluginZipAsset));
+
+            string zipSha = AssetHash.OfFile(zipPath);
+            ZipFile.ExtractToDirectory(zipPath, stage);
+            NormalizeFrontendLayout(stage);
+
+            string stagedJs = Path.Combine(stage, "public", "luatools.js");
+            if (!File.Exists(stagedJs))
+                return (false, Resources.Strings.Plugin_Err_NoLuatoolsJs);
+
+            var oldManifest = ReadManifest();
+            CleanupBrokenWindowsLoader(oldManifest);
+
+            bool markerPreExisting = MarkerExists();
+            bool autostartPreExisting = File.Exists(AutostartPath);
+            bool wasRunning = SteamService.IsSteamRunning();
+
+            if (wasRunning)
+            {
+                steam.StopSteam();
+                await Task.Delay(1000, ct);
+            }
+
+            if (Directory.Exists(FrontendDir))
+                Directory.Delete(FrontendDir, recursive: true);
+            Directory.CreateDirectory(Path.GetDirectoryName(FrontendDir)!);
+            Directory.Move(stage, FrontendDir);
+
+            CreateLinuxCdpMarker();
+            CreateLinuxAutostart();
+
+            WriteManifest(new Manifest
+            {
+                Tag = latest.TagName,
+                ZipSha = zipSha,
+                MarkerCreatedByLuaTools = !markerPreExisting,
+                AutostartCreatedByLuaTools = !autostartPreExisting,
+            });
+
+            await injector.ReloadPluginFilesAsync();
+
+            if (wasRunning && !steam.StartSteam())
+                return (false, "Plugin installed, but Steam could not be restarted with CEF debugging enabled.");
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tmp)) Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    public async Task<bool> AutoUpdateAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var st = await GetStatusAsync(force: true, ct);
+            if (!st.UpdateAvailable) return false;
+            var (ok, _) = await InstallAsync(null, ct);
+            return ok;
+        }
+        catch { return false; }
+    }
+
+    public async Task<(bool ok, string? error)> UninstallAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var manifest = ReadManifest();
+            bool wasRunning = SteamService.IsSteamRunning();
+
+            if (wasRunning)
+            {
+                steam.StopSteam();
+                await Task.Delay(1000, ct);
+            }
+
+            CleanupBrokenWindowsLoader(manifest);
+
+            if (manifest?.MarkerCreatedByLuaTools == true)
+                RemoveLinuxCdpMarker();
+
+            if (manifest?.AutostartCreatedByLuaTools == true)
+                RemoveLinuxAutostart();
+
+            if (Directory.Exists(FrontendDir))
+                Directory.Delete(FrontendDir, recursive: true);
+
+            await injector.ReloadPluginFilesAsync();
+
+            if (wasRunning && !steam.StartSteam())
+                return (false, "Plugin removed, but Steam could not be restarted.");
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    private bool MarkerExists() =>
+        CdpMarkerPath is { } marker && (File.Exists(marker) || Directory.Exists(marker));
+
+    private void CreateLinuxCdpMarker()
+    {
+        if (CdpMarkerPath is not { } marker) return;
+        if (File.Exists(marker) || Directory.Exists(marker)) return;
+        File.WriteAllText(marker, string.Empty);
+    }
+
+    private void RemoveLinuxCdpMarker()
+    {
+        if (CdpMarkerPath is not { } marker) return;
+        try
+        {
+            if (File.Exists(marker)) File.Delete(marker);
+            else if (Directory.Exists(marker)) Directory.Delete(marker);
+        }
+        catch { }
+    }
+
+    private static string? StableExecutablePath()
+    {
+        string? appImage = Environment.GetEnvironmentVariable("APPIMAGE");
+        if (!string.IsNullOrWhiteSpace(appImage) && File.Exists(appImage))
+            return appImage;
+
+        string? process = Environment.ProcessPath;
+        return !string.IsNullOrWhiteSpace(process) && File.Exists(process) ? process : null;
+    }
+
+    private static void CreateLinuxAutostart()
+    {
+        string? exe = StableExecutablePath();
+        if (exe is null) return;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(AutostartPath)!);
+        string quoted = exe.Replace("\"", "\\\"");
+        string desktop =
+            "[Desktop Entry]\n" +
+            "Type=Application\n" +
+            "Name=LuaTools Steam CEF Bridge\n" +
+            $"Exec=\"{quoted}\" --minimized --tray-locked\n" +
+            "Terminal=false\n" +
+            "X-GNOME-Autostart-enabled=true\n" +
+            "NoDisplay=true\n";
+        File.WriteAllText(AutostartPath, desktop);
+    }
+
+    private static void RemoveLinuxAutostart()
+    {
+        try { if (File.Exists(AutostartPath)) File.Delete(AutostartPath); } catch { }
+    }
+
+    private void CleanupBrokenWindowsLoader(Manifest? manifest)
+    {
+        if (SteamDir is not { } s || manifest?.DllShas is null) return;
+        if (!manifest.DllShas.TryGetValue("winmm.dll", out string? expected) || string.IsNullOrWhiteSpace(expected))
+            return;
+
+        string winmm = Path.Combine(s, "winmm.dll");
+        try
+        {
+            if (File.Exists(winmm) &&
+                AssetHash.OfFile(winmm).Equals(expected, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Delete(winmm);
+                string real = Path.Combine(s, "winmm_real.dll");
+                if (File.Exists(real)) File.Delete(real);
+            }
+        }
+        catch { }
+    }
+
+    private static async Task<bool> IsPort8080BusyAsync()
+    {
+        try
+        {
+            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, CdpPort);
+            listener.Start();
+            listener.Stop();
+            return false;
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            try
+            {
+                var body = await PortProbeHttp.GetStringAsync($"http://127.0.0.1:{CdpPort}/json");
+                return !body.TrimStart().StartsWith('[');
+            }
+            catch { return true; }
+        }
+        catch { return false; }
+    }
+
+    private static void NormalizeFrontendLayout(string root)
+    {
+        if (Directory.Exists(Path.Combine(root, "public"))) return;
+        foreach (var sub in Directory.GetDirectories(root))
+        {
+            if (!Directory.Exists(Path.Combine(sub, "public"))) continue;
+            foreach (var entry in Directory.GetFileSystemEntries(sub))
+            {
+                string dest = Path.Combine(root, Path.GetFileName(entry));
+                if (Directory.Exists(entry)) Directory.Move(entry, dest);
+                else File.Move(entry, dest, overwrite: true);
+            }
+            try { Directory.Delete(sub, recursive: true); } catch { }
+            return;
+        }
+    }
+
+    private static GithubAsset? FindAsset(GithubRelease r, string name) =>
+        r.Assets.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+}
+'''
+(_n3_project / 'Services' / 'PluginInstallerService.cs').write_text(_n3_plugin, encoding='utf-8')
+
+# 3) Steam restart: when our marker exists, always launch with Linux's real CEF-debug flag.
+_n3_platform = _n3_project / 'Platform' / 'LinuxPlatformService.cs'
+_s = _n3_platform.read_text(encoding='utf-8-sig')
+_old = r'''    public bool StartSteam(string steamRoot)
+    {
+        if (!Directory.Exists(steamRoot)) return false;
+        string launcher = Path.Combine(steamRoot, SteamExeName);
+        if (!File.Exists(launcher)) return false;
+        try
+        {
+            var psi = new ProcessStartInfo(launcher) { UseShellExecute = false };
+            Process.Start(psi);
+            return true;
+        }
+        catch { return false; }
+    }'''
+_new = r'''    public bool StartSteam(string steamRoot)
+    {
+        if (!Directory.Exists(steamRoot)) return false;
+        bool cefDebug = File.Exists(Path.Combine(steamRoot, ".cef-enable-remote-debugging"))
+            || Directory.Exists(Path.Combine(steamRoot, ".cef-enable-remote-debugging"));
+
+        try
+        {
+            // Flathub Steam must be launched through flatpak; executing files from its data directory
+            // directly escapes the sandbox and is not a valid client start path.
+            if (steamRoot.Contains("/.var/app/com.valvesoftware.Steam/", StringComparison.Ordinal))
+            {
+                var fp = new ProcessStartInfo("flatpak") { UseShellExecute = false };
+                fp.ArgumentList.Add("run");
+                fp.ArgumentList.Add("com.valvesoftware.Steam");
+                if (cefDebug) fp.ArgumentList.Add("-cef-enable-debugging");
+                Process.Start(fp);
+                return true;
+            }
+
+            string launcher = Path.Combine(steamRoot, SteamExeName);
+            if (!File.Exists(launcher)) return false;
+            var psi = new ProcessStartInfo(launcher) { UseShellExecute = false };
+            if (cefDebug) psi.ArgumentList.Add("-cef-enable-debugging");
+            Process.Start(psi);
+            return true;
+        }
+        catch { return false; }
+    }'''
+if _old not in _s:
+    raise SystemExit('native.3: LinuxPlatformService StartSteam anchor missing')
+_s = _s.replace(_old, _new, 1)
+_n3_platform.write_text(_s, encoding='utf-8')
+
+# 4) User-facing terminology: this is not a Windows loader on Linux.
+for _res in (_n3_project / 'Resources').glob('Strings*.resx'):
+    _s = _res.read_text(encoding='utf-8-sig')
+    _s = _n3re.sub(
+        r'(<data name="Plugin_Row_Loader"[^>]*>\s*<value>).*?(</value>)',
+        r'\1Linux CEF bridge\2',
+        _s,
+        flags=_n3re.S
+    )
+    _res.write_text(_s, encoding='utf-8')
+
+print('LuaTools native.3 Linux functional parity overlay applied')
