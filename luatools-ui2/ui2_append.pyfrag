@@ -202,7 +202,6 @@ public class SymbolIcon : PathIcon
     {
         Width = 18;
         Height = 18;
-        Stretch = Stretch.Uniform;
     }
 
     public string Glyph
