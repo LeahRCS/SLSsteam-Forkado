@@ -86,7 +86,7 @@ jobs:
           xdotool windowmap "$WIN" || true
           xdotool windowactivate --sync "$WIN" || true
           sleep 3
-          xwininfo -id "$WIN" >/tmp/luatools-xwininfo.txt
+          xdotool getwindowgeometry --shell "$WIN" >/tmp/luatools-window.txt
           import -window "$WIN" workkit/dist/LuaTools-native.2-smoke.png
           test -s workkit/dist/LuaTools-native.2-smoke.png
 
@@ -100,7 +100,7 @@ jobs:
           PY
 
           echo "---- LuaTools window ----"
-          cat /tmp/luatools-xwininfo.txt
+          cat /tmp/luatools-window.txt
           echo "---- LuaTools smoke log ----"
           cat /tmp/luatools-ui.log || true
 
