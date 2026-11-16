@@ -61,6 +61,8 @@ _native_presenter_styles = r'''        <Style Selector="Button.navItem /template
         </Style>
 '''
 _s = _s.replace('    <Window.Styles>\n', '    <Window.Styles>\n' + _native_presenter_styles, 1)
+for _old, _new in {'Click=\'NavigateHome_Click\'':'x:Name=\'NavHome\' Click=\'NavigateHome_Click\'','Click=\'NavigateAdd_Click\'':'x:Name=\'NavAdd\' Click=\'NavigateAdd_Click\'','Click=\'NavigateManage_Click\'':'x:Name=\'NavManage\' Click=\'NavigateManage_Click\'','Click=\'NavigateBuilds_Click\'':'x:Name=\'NavBuilds\' Click=\'NavigateBuilds_Click\'','Click=\'NavigateTools_Click\'':'x:Name=\'NavTools\' Click=\'NavigateTools_Click\'','Click=\'NavigateMode_Click\'':'x:Name=\'NavMode\' Click=\'NavigateMode_Click\'','Click=\'NavigateFixes_Click\'':'x:Name=\'NavFixes\' Click=\'NavigateFixes_Click\'','Click=\'NavigatePlugin_Click\'':'x:Name=\'NavPlugin\' Click=\'NavigatePlugin_Click\'','Click=\'NavigateDownloads_Click\'':'x:Name=\'NavDownloads\' Click=\'NavigateDownloads_Click\'','Click=\'NavigateSettings_Click\'':'x:Name=\'NavSettings\' Click=\'NavigateSettings_Click\''}.items():
+    _s = _s.replace(_old, _new)
 _n3_main.write_text(_s, encoding='utf-8')
 
 _n3_maincs = _n3_project / 'MainWindow.axaml.cs'
