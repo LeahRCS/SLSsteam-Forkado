@@ -463,9 +463,21 @@ _new = r'''    public bool StartSteam(string steamRoot)
     }'''
 
 _start = _s.find('    public bool StartSteam(string steamRoot)')
-_end = _s.rfind('\n}')
-if _start < 0 or _end < _start:
+if _start < 0:
     raise SystemExit('native.3: LinuxPlatformService StartSteam method not found')
+_open = _s.find('{', _start)
+_depth = 0
+_end = -1
+for _i in range(_open, len(_s)):
+    if _s[_i] == '{':
+        _depth += 1
+    elif _s[_i] == '}':
+        _depth -= 1
+        if _depth == 0:
+            _end = _i + 1
+            break
+if _end < 0:
+    raise SystemExit('native.3: LinuxPlatformService StartSteam closing brace not found')
 _s = _s[:_start] + _new + _s[_end:]
 _n3_platform.write_text(_s, encoding='utf-8')
 
