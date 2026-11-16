@@ -75,7 +75,8 @@ _s = _s.replace(
             await injector.ReloadPluginFilesAsync();
 
             step = "restarting Steam with CEF debugging enabled";
-            if (wasRunning && !steam.StartSteam())'''
+            if (wasRunning && !steam.StartSteam())''',
+1
 )
 
 _s = _s.replace(
