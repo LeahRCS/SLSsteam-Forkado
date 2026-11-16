@@ -87,6 +87,26 @@ if '_NavigateHome_Click' not in _s and 'private void NavigateHome_Click' not in 
         raise SystemExit('native.3: MainWindow handler anchor missing')
     _s = _s.replace(_handler_anchor, handlers + _handler_anchor, 1)
 
+# CI-only routed-pointer tracing. This tells us whether synthetic/native pointer events reach Avalonia
+# and which control is actually under the pointer, including events already marked handled.
+_s = _s.replace('using Avalonia.Interactivity;\n', 'using Avalonia.Interactivity;\nusing Avalonia.Input;\n', 1)
+_s = _s.replace(
+    '        InitializeComponent();\n',
+    '        InitializeComponent();\n        if (Environment.GetEnvironmentVariable("LUATOOLS_SMOKE_TEST") == "1")\n            AddHandler(InputElement.PointerPressedEvent, SmokePointerPressed, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, true);\n',
+    1
+)
+_smoke_method = r'''    private void SmokePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var p = e.GetPosition(this);
+        string source = e.Source is Control c
+            ? $"{c.GetType().Name}:{c.Name ?? "<unnamed>"}"
+            : e.Source?.GetType().Name ?? "<null>";
+        Console.Error.WriteLine($"SMOKE_POINTER x={p.X:F1} y={p.Y:F1} source={source} handled={e.Handled}");
+    }
+
+'''
+_s = _s.replace(_handler_anchor, _smoke_method + _handler_anchor, 1)
+
 # During CI only, expose the current PageHost type in the window title. This makes the navigation
 # smoke test assert the actual routed page rather than guessing from pixel differences.
 _s = _s.replace(
