@@ -86,6 +86,14 @@ if '_NavigateHome_Click' not in _s and 'private void NavigateHome_Click' not in 
     if _handler_anchor not in _s:
         raise SystemExit('native.3: MainWindow handler anchor missing')
     _s = _s.replace(_handler_anchor, handlers + _handler_anchor, 1)
+
+# During CI only, expose the current PageHost type in the window title. This makes the navigation
+# smoke test assert the actual routed page rather than guessing from pixel differences.
+_s = _s.replace(
+    '        host.Content = page;\n',
+    '        host.Content = page;\n        if (Environment.GetEnvironmentVariable("LUATOOLS_SMOKE_TEST") == "1")\n            Title = $"LuaTools::{pageType.Name}";\n',
+    1
+)
 _n3_maincs.write_text(_s, encoding='utf-8')
 
 # 2) Linux-only LTSP plugin manager. No winmm.dll, cmd.exe, NTFS junction or Steam.exe assumptions.
