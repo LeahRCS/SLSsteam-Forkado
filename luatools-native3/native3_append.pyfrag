@@ -580,15 +580,33 @@ if _end < 0:
 _s = _s[:_start] + _new + _s[_end:]
 _n3_platform.write_text(_s, encoding='utf-8')
 
-# 4) User-facing terminology: this is not a Windows loader on Linux.
+# 4) User-facing terminology: this is a Linux CEF bridge, never a Windows DLL loader.
 for _res in (_n3_project / 'Resources').glob('Strings*.resx'):
     _s = _res.read_text(encoding='utf-8-sig')
-    _s = _n3re.sub(
-        r'(<data name="Plugin_Row_Loader"[^>]*>\s*<value>).*?(</value>)',
-        r'\1Linux CEF bridge\2',
-        _s,
-        flags=_n3re.S
-    )
+    _pt = _res.name in ('Strings.pt-BR.resx', 'Strings.pt-PT.resx')
+    _values = {
+        'Plugin_Subtitle': (
+            'Plugin do LuaTools para Steam — bridge CEF nativa para Linux'
+            if _pt else
+            'LuaTools Steam Plugin — native Linux CEF bridge'
+        ),
+        'Plugin_Row_Loader': (
+            'Bridge CEF do Linux' if _pt else 'Linux CEF bridge'
+        ),
+        'Plugin_Millennium_Coexisting': (
+            'Millennium detectado. O LuaTools pode funcionar ao lado dele; a bridge CEF do Linux injeta o frontend do LuaTools de forma independente.'
+            if _pt else
+            'Millennium detected. LuaTools can run alongside it; the Linux CEF bridge injects the LuaTools frontend independently.'
+        ),
+        'Plugin_Footer': (
+            'No Linux, o plugin usa a depuração remota CEF da Steam e o AppImage do LuaTools como backend. Mantenha o LuaTools na bandeja enquanto usar o plugin.'
+            if _pt else
+            'On Linux, the plugin uses Steam CEF remote debugging and the LuaTools AppImage as its backend. Keep LuaTools running in the tray while using the plugin.'
+        ),
+    }
+    for _key, _value in _values.items():
+        _pattern = r'(<data name="' + _n3re.escape(_key) + r'"[^>]*>\s*<value>).*?(</value>)'
+        _s = _n3re.sub(_pattern, lambda m, value=_value: m.group(1) + value + m.group(2), _s, flags=_n3re.S)
     _res.write_text(_s, encoding='utf-8')
 
 print('LuaTools native.3 Linux functional parity overlay applied')
