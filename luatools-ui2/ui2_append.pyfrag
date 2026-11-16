@@ -7,12 +7,9 @@ import re as _ui_re
 _ui_project = P
 _ui_csproj = _ui_project / 'LuaToolsGui.csproj'
 _ui_cs = _ui_csproj.read_text(encoding='utf-8-sig')
-if 'Material.Icons.Avalonia' not in _ui_cs:
-    anchor = '<PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" />'
-    repl = anchor + '\n    <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />'
-    if anchor not in _ui_cs:
-        raise SystemExit('UI2: csproj package anchor missing')
-    _ui_cs = _ui_cs.replace(anchor, repl, 1)
+# native.2 deliberately uses Avalonia PathIcon geometries only: no host icon font and no external
+# icon-control package are required at runtime.
+_ui_cs = _ui_re.sub(r'\s*<PackageReference Include="Material\.Icons\.Avalonia"[^>]*/>', '', _ui_cs)
 _ui_csproj.write_text(_ui_cs, encoding='utf-8')
 
 _ui_app = r'''<Application xmlns="https://github.com/avaloniaui"
@@ -53,6 +50,20 @@ _ui_app = r'''<Application xmlns="https://github.com/avaloniaui"
             <Setter Property="BorderBrush" Value="#9B87FF" />
             <Setter Property="Foreground" Value="#FFFFFFFF" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
         </Style>
         <Style Selector="Button.accent:pointerover">
             <Setter Property="Background" Value="#8B6BFF" />
@@ -119,65 +130,79 @@ _ui_app = r'''<Application xmlns="https://github.com/avaloniaui"
 _ui_symbol = r'''using System;
 using System.Collections.Generic;
 using Avalonia;
-using Material.Icons;
-using Material.Icons.Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
 
 namespace LuaToolsGui.Controls;
 
 /// <summary>
-/// Font-independent replacement for WPF-UI SymbolIcon. Linux must not depend on Segoe Fluent Icons
-/// being installed by the host desktop, so all glyphs are mapped to vector Material icons shipped
-/// with the AppImage.
+/// Self-contained vector replacement for WPF-UI SymbolIcon. Every icon is geometry rendered by
+/// Avalonia itself; no Segoe/Fluent font, Material icon package, or host desktop resource is required.
 /// </summary>
-public class SymbolIcon : MaterialIcon
+public class SymbolIcon : PathIcon
 {
     public static readonly StyledProperty<string> GlyphProperty =
         AvaloniaProperty.Register<SymbolIcon, string>(nameof(Glyph), string.Empty);
 
-    private static readonly Dictionary<string, string> LegacyMap = new(StringComparer.Ordinal)
-    {
-        ["\uE821"] = "ControllerClassicOutline",
-        ["\uE77B"] = "AccountOutline",
-        ["\uE713"] = "CogOutline",
-        ["\uEA83"] = "SourceBranch",
-        ["\uE73E"] = "CheckCircleOutline",
-        ["\uE8D7"] = "KeyVariant",
-        ["\uE734"] = "StarOutline",
-        ["\uE896"] = "TrayArrowDown",
-        ["\uE80F"] = "ControllerClassicOutline",
-        ["\uE8C8"] = "ContentCopy",
-        ["\uE753"] = "TuneVariant",
-        ["\uE735"] = "InformationOutline",
-        ["\uE7BA"] = "AlertOutline",
-        ["\uE74C"] = "PuzzleOutline",
-        ["\uE7B6"] = "TagOutline",
-        ["\uE711"] = "CloseCircleOutline",
-        ["\uE710"] = "StorefrontOutline",
-        ["\uE945"] = "Update",
-        ["\uE946"] = "LockOutline",
-    };
+    private static readonly IReadOnlyDictionary<string, string> Paths =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["home"] = "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+            ["add"] = "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+            ["manage"] = "M6 8h12a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4l-3-3H9l-3 3a4 4 0 0 1-4-4v-4a4 4 0 0 1 4-4zm1 3v2H5v2h2v2h2v-2h2v-2H9v-2H7zm8 1a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm3 3a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+            ["depots"] = "M6 2a3 3 0 0 0-1 5.83V9a6 6 0 0 0 6 6h5v1.17A3 3 0 1 0 18 16v-3h-7a4 4 0 0 1-4-4V7.83A3 3 0 1 0 6 2zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm12 14a1 1 0 1 1 0 2 1 1 0 0 1 0-2z",
+            ["tools"] = "M9 3h6a2 2 0 0 1 2 2v2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm0 4h6V5H9v2zm11 5H4v6h16v-6z",
+            ["mode"] = "M4 7h10v2H4V7zm14 0h2v2h-2V7zm-6 8h8v2h-8v-2zM4 15h4v2H4v-2zm12-2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM10 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6z",
+            ["fixes"] = "M12 2 4 5v6c0 5.05 3.41 9.74 8 11 4.59-1.26 8-5.95 8-11V5l-8-3zm-1.2 14.4L7.4 13l1.4-1.4 2 2 4.4-4.4 1.4 1.4-5.8 5.8z",
+            ["plugin"] = "M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5A2.5 2.5 0 0 0 10.5 1 2.5 2.5 0 0 0 8 3.5V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 1 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 1 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z",
+            ["restart"] = "M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.1A6 6 0 1 1 16.24 8L13 11.25V3h8.25l-3.6 3.35z",
+            ["downloads"] = "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
+            ["settings"] = "M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-.2-.54-1.6-2.77-.58-.12-2.39.96a7.2 7.2 0 0 0-1.62-.94L14.4 3.5 14 2h-4l-.4 1.5-.37 2.57c-.59.24-1.13.56-1.62.94l-2.39-.96-.58.12-1.6 2.77-.2.54 2.03 1.58c-.05.31-.08.63-.08.94s.03.63.08.94l-2.03 1.58.2.54 1.6 2.77.58.12 2.39-.96c.49.38 1.03.7 1.62.94l.37 2.57L10 22h4l.4-1.5.37-2.57c.59-.24 1.13-.56 1.62-.94l2.39.96.58-.12 1.6-2.77.2-.54-2.02-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z",
+            ["account"] = "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+            ["app"] = "M14.7 6.3a4.5 4.5 0 0 0-5.85 5.85L3 18l3 3 5.85-5.85A4.5 4.5 0 0 0 17.7 9.3l-2.2 2.2-3-3 2.2-2.2z",
+            ["check"] = "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+            ["key"] = "M7 14a5 5 0 1 1 4.9-6H22v4h-2v2h-2v2h-6.1A5 5 0 0 1 7 14zm0-2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+            ["star"] = "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z",
+            ["drop"] = "M5 20h14v-2H5v2zm7-18-5 5h3v6h4V7h3l-5-5z",
+            ["copy"] = "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z",
+            ["info"] = "M11 17h2v-6h-2v6zm1-15a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-1-11h2V7h-2v2z",
+            ["alert"] = "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z",
+            ["tag"] = "M21.4 11.6 12.4 2.6A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .53.21 1.04.59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0-.01-2.81zM6.5 8A1.5 1.5 0 1 1 6.5 5a1.5 1.5 0 0 1 0 3z",
+            ["close"] = "M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.7 4.29 4.29 10.59 10.59 16.89 4.29z",
+            ["store"] = "M4 4h16l1 5a3 3 0 0 1-2 2.83V20H5v-8.17A3 3 0 0 1 3 9l1-5zm3 8v6h10v-6H7z",
+            ["update"] = "M12 4V1L8 5l4 4V6a6 6 0 1 1-5.65 4H4.26A8 8 0 1 0 12 4z",
+            ["lock"] = "M18 8h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-9-2a3 3 0 0 1 6 0v2H9V6zm3 11a2 2 0 1 1 0-4 2 2 0 0 1 0 4z",
+        };
 
-    private static readonly Dictionary<string, string> SemanticMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["home"] = "HomeVariantOutline",
-        ["add"] = "PlusCircleOutline",
-        ["manage"] = "ControllerClassicOutline",
-        ["depots"] = "SourceBranch",
-        ["tools"] = "ToolboxOutline",
-        ["mode"] = "TuneVariant",
-        ["fixes"] = "ShieldCheckOutline",
-        ["plugin"] = "PuzzleOutline",
-        ["restart"] = "Restart",
-        ["downloads"] = "DownloadOutline",
-        ["settings"] = "CogOutline",
-        ["account"] = "AccountCircleOutline",
-        ["app"] = "Tools",
-    };
+    private static readonly IReadOnlyDictionary<string, string> Legacy =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["\uE821"] = "manage",
+            ["\uE77B"] = "account",
+            ["\uE713"] = "settings",
+            ["\uEA83"] = "depots",
+            ["\uE73E"] = "check",
+            ["\uE8D7"] = "key",
+            ["\uE734"] = "star",
+            ["\uE896"] = "drop",
+            ["\uE80F"] = "manage",
+            ["\uE8C8"] = "copy",
+            ["\uE753"] = "mode",
+            ["\uE735"] = "info",
+            ["\uE7BA"] = "alert",
+            ["\uE74C"] = "plugin",
+            ["\uE7B6"] = "tag",
+            ["\uE711"] = "close",
+            ["\uE710"] = "store",
+            ["\uE945"] = "update",
+            ["\uE946"] = "lock",
+        };
 
     public SymbolIcon()
     {
         Width = 18;
         Height = 18;
+        Stretch = Stretch.Uniform;
     }
 
     public string Glyph
@@ -197,25 +222,17 @@ public class SymbolIcon : MaterialIcon
     {
         if (string.IsNullOrWhiteSpace(raw))
         {
+            Data = null;
             IsVisible = false;
             return;
         }
 
+        string key = Legacy.TryGetValue(raw, out var legacy) ? legacy : raw;
+        if (!Paths.TryGetValue(key, out var path))
+            path = Paths["info"];
+
+        Data = Geometry.Parse(path);
         IsVisible = true;
-        string name = raw;
-        if (LegacyMap.TryGetValue(raw, out var legacy)) name = legacy;
-        else if (SemanticMap.TryGetValue(raw, out var semantic)) name = semantic;
-
-        if (Enum.TryParse<MaterialIconKind>(name, true, out var kind))
-        {
-            Kind = kind;
-            return;
-        }
-
-        if (Enum.TryParse<MaterialIconKind>("CircleOutline", true, out var fallback))
-            Kind = fallback;
-        else
-            Kind = default;
     }
 }
 '''
@@ -245,11 +262,26 @@ _ui_main = r'''<Window xmlns="https://github.com/avaloniaui"
             <Setter Property="Margin" Value="6,2" />
             <Setter Property="Padding" Value="10,0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="7" />
             <Setter Property="Foreground" Value="#DCE2EA" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
         </Style>
         <Style Selector="Button.navItem:pointerover">
             <Setter Property="Background" Value="#12FFFFFF" />
@@ -262,10 +294,27 @@ _ui_main = r'''<Window xmlns="https://github.com/avaloniaui"
         <Style Selector="Button.discordButton">
             <Setter Property="Margin" Value="10,8,10,5" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="#6D5DFB" />
             <Setter Property="BorderBrush" Value="#8C7BFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
         </Style>
     </Window.Styles>
 
