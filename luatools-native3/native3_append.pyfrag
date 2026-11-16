@@ -432,19 +432,6 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
 # 3) Steam restart: when our marker exists, always launch with Linux's real CEF-debug flag.
 _n3_platform = _n3_project / 'Platform' / 'LinuxPlatformService.cs'
 _s = _n3_platform.read_text(encoding='utf-8-sig')
-_old = r'''    public bool StartSteam(string steamRoot)
-    {
-        if (!Directory.Exists(steamRoot)) return false;
-        string launcher = Path.Combine(steamRoot, SteamExeName);
-        if (!File.Exists(launcher)) return false;
-        try
-        {
-            var psi = new ProcessStartInfo(launcher) { UseShellExecute = false };
-            Process.Start(psi);
-            return true;
-        }
-        catch { return false; }
-    }'''
 _new = r'''    public bool StartSteam(string steamRoot)
     {
         if (!Directory.Exists(steamRoot)) return false;
@@ -454,7 +441,7 @@ _new = r'''    public bool StartSteam(string steamRoot)
         try
         {
             // Flathub Steam must be launched through flatpak; executing files from its data directory
-            // directly escapes the sandbox and is not a valid client start path.
+            // directly is not a valid client start path.
             if (steamRoot.Contains("/.var/app/com.valvesoftware.Steam/", StringComparison.Ordinal))
             {
                 var fp = new ProcessStartInfo("flatpak") { UseShellExecute = false };
@@ -474,9 +461,12 @@ _new = r'''    public bool StartSteam(string steamRoot)
         }
         catch { return false; }
     }'''
-if _old not in _s:
-    raise SystemExit('native.3: LinuxPlatformService StartSteam anchor missing')
-_s = _s.replace(_old, _new, 1)
+
+_start = _s.find('    public bool StartSteam(string steamRoot)')
+_end = _s.rfind('\n}')
+if _start < 0 or _end < _start:
+    raise SystemExit('native.3: LinuxPlatformService StartSteam method not found')
+_s = _s[:_start] + _new + _s[_end:]
 _n3_platform.write_text(_s, encoding='utf-8')
 
 # 4) User-facing terminology: this is not a Windows loader on Linux.
