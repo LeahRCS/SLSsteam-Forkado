@@ -93,7 +93,7 @@ jobs:
           WM_PID=$!
           sleep 2
 
-          APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" >/tmp/luatools-ui.log 2>&1 &
+          LUATOOLS_SMOKE_TEST=1 APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" >/tmp/luatools-ui.log 2>&1 &
           APP_PID=$!
 
           WIN=""
@@ -109,36 +109,48 @@ jobs:
           import -window "$WIN" workkit/dist/native3-home.png
           test -s workkit/dist/native3-home.png
 
-          click_and_assert_changed() {
+          # Initial navigation performed by MainWindow.Loaded must expose HomeView.
+          TITLE="$(xdotool getwindowname "$WIN")"
+          echo "initial-title=$TITLE"
+          [[ "$TITLE" == "LuaTools::HomeView" ]]
+
+          click_and_assert_page() {
             name="$1"
-            y="$2"
+            expected="$2"
+            y="$3"
             xdotool mousemove --window "$WIN" 105 "$y" click 1
             sleep 2
             kill -0 "$APP_PID"
+            TITLE="$(xdotool getwindowname "$WIN")"
+            echo "$name-title=$TITLE"
             import -window "$WIN" "workkit/dist/native3-$name.png"
             test -s "workkit/dist/native3-$name.png"
-            if cmp -s workkit/dist/native3-home.png "workkit/dist/native3-$name.png"; then
-              echo "Navigation button '$name' produced no visible page change" >&2
+            if [[ "$TITLE" != "LuaTools::$expected" ]]; then
+              echo "Navigation '$name' did not route to $expected" >&2
+              xdotool getmouselocation --shell || true
+              echo "---- LuaTools runtime log ----"
+              cat /tmp/luatools-ui.log || true
               exit 1
             fi
           }
 
-          # Top navigation centers, relative to the LuaTools client window.
-          click_and_assert_changed add 114
-          click_and_assert_changed manage 158
-          click_and_assert_changed depots 202
-          click_and_assert_changed tools 246
-          click_and_assert_changed mode 290
-          click_and_assert_changed fixes 334
-          click_and_assert_changed plugin 378
+          # Actual pointer clicks against each navigation button.
+          click_and_assert_page add DownloadView 114
+          click_and_assert_page manage ManageView 158
+          click_and_assert_page depots BuildsView 202
+          click_and_assert_page tools GameToolsView 246
+          click_and_assert_page mode ModeView 290
+          click_and_assert_page fixes FixesView 334
+          click_and_assert_page plugin PluginView 378
 
-          # Bottom navigation; coordinates are stable in the fixed 720px smoke window.
-          click_and_assert_changed downloads 574
-          click_and_assert_changed settings 618
+          # Bottom navigation.
+          click_and_assert_page downloads DownloadsView 474
+          click_and_assert_page settings SettingsView 518
 
           # Return home and capture the final visual artifact.
           xdotool mousemove --window "$WIN" 105 70 click 1
           sleep 2
+          [[ "$(xdotool getwindowname "$WIN")" == "LuaTools::HomeView" ]]
           import -window "$WIN" workkit/dist/LuaTools-native.3-smoke.png
 
           MEAN="$(identify -format '%[fx:mean]' workkit/dist/LuaTools-native.3-smoke.png)"
