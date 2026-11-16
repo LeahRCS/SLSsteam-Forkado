@@ -235,6 +235,43 @@ public class SymbolIcon : PathIcon
 '''
 (_ui_project / 'Controls' / 'SymbolIcon.cs').write_text(_ui_symbol, encoding='utf-8')
 
+_ui_path_data = {
+    "home": "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+    "add": "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+    "manage": "M6 8h12a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4l-3-3H9l-3 3a4 4 0 0 1-4-4v-4a4 4 0 0 1 4-4zm1 3v2H5v2h2v2h2v-2h2v-2H9v-2H7zm8 1a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm3 3a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+    "depots": "M6 2a3 3 0 0 0-1 5.83V9a6 6 0 0 0 6 6h5v1.17A3 3 0 1 0 18 16v-3h-7a4 4 0 0 1-4-4V7.83A3 3 0 1 0 6 2zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm12 14a1 1 0 1 1 0 2 1 1 0 0 1 0-2z",
+    "tools": "M9 3h6a2 2 0 0 1 2 2v2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm0 4h6V5H9v2zm11 5H4v6h16v-6z",
+    "mode": "M4 7h10v2H4V7zm14 0h2v2h-2V7zm-6 8h8v2h-8v-2zM4 15h4v2H4v-2zm12-2a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM10 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6z",
+    "fixes": "M12 2 4 5v6c0 5.05 3.41 9.74 8 11 4.59-1.26 8-5.95 8-11V5l-8-3zm-1.2 14.4L7.4 13l1.4-1.4 2 2 4.4-4.4 1.4 1.4-5.8 5.8z",
+    "plugin": "M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5A2.5 2.5 0 0 0 10.5 1 2.5 2.5 0 0 0 8 3.5V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 1 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 1 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z",
+    "restart": "M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.1A6 6 0 1 1 16.24 8L13 11.25V3h8.25l-3.6 3.35z",
+    "downloads": "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
+    "settings": "M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58-.2-.54-1.6-2.77-.58-.12-2.39.96a7.2 7.2 0 0 0-1.62-.94L14.4 3.5 14 2h-4l-.4 1.5-.37 2.57c-.59.24-1.13.56-1.62.94l-2.39-.96-.58.12-1.6 2.77-.2.54 2.03 1.58c-.05.31-.08.63-.08.94s.03.63.08.94l-2.03 1.58.2.54 1.6 2.77.58.12 2.39-.96c.49.38 1.03.7 1.62.94l.37 2.57L10 22h4l.4-1.5.37-2.57c.59-.24 1.13-.56 1.62-.94l2.39.96.58-.12 1.6-2.77.2-.54-2.02-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z",
+    "account": "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+    "app": "M14.7 6.3a4.5 4.5 0 0 0-5.85 5.85L3 18l3 3 5.85-5.85A4.5 4.5 0 0 0 17.7 9.3l-2.2 2.2-3-3 2.2-2.2z",
+    "check": "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+    "key": "M7 14a5 5 0 1 1 4.9-6H22v4h-2v2h-2v2h-6.1A5 5 0 0 1 7 14zm0-2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+    "star": "M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z",
+    "drop": "M5 20h14v-2H5v2zm7-18-5 5h3v6h4V7h3l-5-5z",
+    "copy": "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z",
+    "info": "M11 17h2v-6h-2v6zm1-15a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-1-11h2V7h-2v2z",
+    "alert": "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z",
+    "tag": "M21.4 11.6 12.4 2.6A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .53.21 1.04.59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0-.01-2.81zM6.5 8A1.5 1.5 0 1 1 6.5 5a1.5 1.5 0 0 1 0 3z",
+    "close": "M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.7 4.29 4.29 10.59 10.59 16.89 4.29z",
+    "store": "M4 4h16l1 5a3 3 0 0 1-2 2.83V20H5v-8.17A3 3 0 0 1 3 9l1-5zm3 8v6h10v-6H7z",
+    "update": "M12 4V1L8 5l4 4V6a6 6 0 1 1-5.65 4H4.26A8 8 0 1 0 12 4z",
+    "lock": "M18 8h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-9-2a3 3 0 0 1 6 0v2H9V6zm3 11a2 2 0 1 1 0-4 2 2 0 0 1 0 4z",
+}
+_ui_legacy_paths = {
+    "&#xE821;": "manage", "&#xE77B;": "account", "&#xE713;": "settings",
+    "&#xEA83;": "depots", "&#xE73E;": "check", "&#xE8D7;": "key",
+    "&#xE734;": "star", "&#xE896;": "drop", "&#xE80F;": "manage",
+    "&#xE8C8;": "copy", "&#xE753;": "mode", "&#xE735;": "info",
+    "&#xE7BA;": "alert", "&#xE74C;": "plugin", "&#xE7B6;": "tag",
+    "&#xE711;": "close", "&#xE710;": "store", "&#xE945;": "update",
+    "&#xE946;": "lock",
+}
+
 _ui_main = r'''<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -413,10 +450,16 @@ _ui_main = r'''<Window xmlns="https://github.com/avaloniaui"
     </Grid>
 </Window>
 '''
+for _name, _path in _ui_path_data.items():
+    _ui_main = _ui_main.replace(f'<ctrls:SymbolIcon Glyph="{_name}"', f'<PathIcon Data="{_path}"')
 (_ui_project / 'MainWindow.axaml').write_text(_ui_main, encoding='utf-8')
 
 _ui_home_path = _ui_project / 'Views' / 'HomeView.axaml'
 _ui_home = _ui_home_path.read_text(encoding='utf-8-sig')
+_ui_home = _ui_home.replace(
+    '<Style Selector="Button.cardTile">\n            <Setter Property="Cursor" Value="Hand" />',
+    '<Style Selector="Button.cardTile">\n            <Setter Property="Cursor" Value="Hand" />\n            <Setter Property="HorizontalAlignment" Value="Stretch" />\n            <Setter Property="MinHeight" Value="82" />'
+)
 _ui_home = _ui_home.replace(
     '<ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />',
     '<ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="Stretch" VerticalAlignment="Center" />'
@@ -433,5 +476,20 @@ for _rel in ['Views/DropZone.axaml', 'Views/ManageView.axaml', 'Views/BuildsView
     _s = _s.replace('Background="#0DFFFFFF"', 'Background="#12FFFFFF"')
     _s = _s.replace('BorderBrush="#14FFFFFF"', 'BorderBrush="#1CFFFFFF"')
     _p.write_text(_s, encoding='utf-8')
+
+
+# Final icon pass: use PathIcon directly in XAML so Avalonia's built-in PathIcon ControlTheme applies.
+# Derived PathIcon controls do not inherit that keyed theme reliably on Avalonia 11.
+for _xaml in _ui_project.rglob('*.axaml'):
+    _s = _xaml.read_text(encoding='utf-8-sig')
+    for _entity, _key in _ui_legacy_paths.items():
+        _path = _ui_path_data[_key]
+        _pat = r'<ctrls:SymbolIcon(?P<before>[^>]*)Glyph="' + _ui_re.escape(_entity) + r'"(?P<after>[^>]*)/>'
+        _s = _ui_re.sub(
+            _pat,
+            lambda m, path=_path: '<PathIcon' + m.group('before') + 'Data="' + path + '"' + m.group('after') + '/>',
+            _s
+        )
+    _xaml.write_text(_s, encoding='utf-8')
 
 print('LuaTools Native UI parity overlay v2 applied')
