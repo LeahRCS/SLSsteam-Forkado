@@ -1,0 +1,350 @@
+
+# ---- native.4 plugin install reliability ----------------------------------------
+from pathlib import Path as _N4Path
+
+# 1) Plugin installer: avoid cross-filesystem Directory.Move (/tmp tmpfs -> ~/.config),
+#    report the failing stage, and stop false-positive Millennium detection.
+_n4_plugin_path = P / 'Services' / 'PluginInstallerService.cs'
+_s = _n4_plugin_path.read_text(encoding='utf-8-sig')
+
+_s = _s.replace(
+'''    public bool MillenniumPresent =>
+        SteamDir is { } s &&
+        (Directory.Exists(Path.Combine(s, "millennium"))
+         || File.Exists(Path.Combine(s, "ubuntu12_64", "libXtst.so.6"))
+         || File.Exists(Path.Combine(s, "ubuntu12_32", "libXtst.so.6")));''',
+'''    public bool MillenniumPresent =>
+        SteamDir is { } s && Directory.Exists(Path.Combine(s, "millennium"));'''
+)
+
+_s = _s.replace(
+'''        try
+        {
+            string zipPath = Path.Combine(tmp, PluginZipAsset);
+            await gh.DownloadAsync(zipAsset.DownloadUrl, zipPath, progress, ct);''',
+'''        string step = "preparing plugin download";
+        try
+        {
+            string zipPath = Path.Combine(tmp, PluginZipAsset);
+            step = "downloading plugin.zip";
+            await gh.DownloadAsync(zipAsset.DownloadUrl, zipPath, progress, ct);'''
+)
+
+_s = _s.replace(
+'''            if (!AssetHash.Matches(zipPath, zipAsset.Digest))
+                return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, PluginZipAsset));
+
+            string zipSha = AssetHash.OfFile(zipPath);
+            ZipFile.ExtractToDirectory(zipPath, stage);
+            NormalizeFrontendLayout(stage);''',
+'''            step = "verifying plugin.zip";
+            if (!AssetHash.Matches(zipPath, zipAsset.Digest))
+                return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, PluginZipAsset));
+
+            string zipSha = AssetHash.OfFile(zipPath);
+            step = "extracting plugin.zip";
+            ZipFile.ExtractToDirectory(zipPath, stage);
+            NormalizeFrontendLayout(stage);'''
+)
+
+_s = _s.replace(
+'''            if (Directory.Exists(FrontendDir))
+                Directory.Delete(FrontendDir, recursive: true);
+            Directory.CreateDirectory(Path.GetDirectoryName(FrontendDir)!);
+            Directory.Move(stage, FrontendDir);
+
+            CreateLinuxCdpMarker();
+            CreateLinuxAutostart();''',
+'''            step = "installing frontend into the LuaTools config directory";
+            if (Directory.Exists(FrontendDir))
+                Directory.Delete(FrontendDir, recursive: true);
+            Directory.CreateDirectory(Path.GetDirectoryName(FrontendDir)!);
+            CopyDirectory(stage, FrontendDir);
+
+            step = "enabling Steam CEF remote debugging";
+            CreateLinuxCdpMarker();
+            step = "creating the LuaTools CEF bridge autostart entry";
+            CreateLinuxAutostart();'''
+)
+
+_s = _s.replace(
+'''            await injector.ReloadPluginFilesAsync();
+
+            if (wasRunning && !steam.StartSteam())''',
+'''            step = "loading the LuaTools frontend into the CEF bridge";
+            await injector.ReloadPluginFilesAsync();
+
+            step = "restarting Steam with CEF debugging enabled";
+            if (wasRunning && !steam.StartSteam())'''
+)
+
+_s = _s.replace(
+'''        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }''',
+'''        catch (Exception ex)
+        {
+            return (false, $"{step}: {ex.Message}");
+        }''',
+1
+)
+
+_copy_helper = r'''    private static void CopyDirectory(string sourceDir, string destinationDir)
+    {
+        Directory.CreateDirectory(destinationDir);
+
+        foreach (string file in Directory.GetFiles(sourceDir))
+        {
+            string destination = Path.Combine(destinationDir, Path.GetFileName(file));
+            File.Copy(file, destination, overwrite: true);
+        }
+
+        foreach (string directory in Directory.GetDirectories(sourceDir))
+        {
+            string destination = Path.Combine(destinationDir, Path.GetFileName(directory));
+            CopyDirectory(directory, destination);
+        }
+    }
+
+'''
+_anchor = '    private static void NormalizeFrontendLayout(string root)\n'
+if _anchor not in _s:
+    raise SystemExit('native.4: NormalizeFrontendLayout anchor missing')
+_s = _s.replace(_anchor, _copy_helper + _anchor, 1)
+_n4_plugin_path.write_text(_s, encoding='utf-8')
+
+# 2) Real async confirmation. The old sync wrapper called ShowDialog() without awaiting its Task,
+#    so the command continued immediately and the user's choice was not actually observed.
+_n4_dialog_path = P / 'Platform' / 'DialogService.cs'
+_s = _n4_dialog_path.read_text(encoding='utf-8-sig')
+_msgbox_anchor = '''public static class MsgBox
+{
+    public static bool Confirm(string body, string title) =>
+        DialogService.Show(body, title, DialogButton.OKCancel, DialogIcon.Warning) == DialogResult.OK;
+'''
+_msgbox_replacement = r'''public static class MsgBox
+{
+    public static async Task<bool> ConfirmAsync(string body, string title)
+    {
+        var window = new Window
+        {
+            Title = title,
+            Width = 430,
+            MaxWidth = 470,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+            ShowInTaskbar = false,
+        };
+
+        var panel = new StackPanel { Margin = new Thickness(20), Spacing = 16 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = body,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 360,
+        });
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancel = new Button { Content = "Cancelar", MinWidth = 90, IsCancel = true };
+        var ok = new Button { Content = "OK", MinWidth = 90, IsDefault = true };
+        cancel.Click += (_, _) => { tcs.TrySetResult(false); window.Close(); };
+        ok.Click += (_, _) => { tcs.TrySetResult(true); window.Close(); };
+        window.Closed += (_, _) => tcs.TrySetResult(false);
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(ok);
+        panel.Children.Add(buttons);
+        window.Content = panel;
+
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            _ = window.ShowDialog(main);
+        else
+            window.Show();
+
+        return await tcs.Task;
+    }
+
+    public static bool Confirm(string body, string title) =>
+        DialogService.Show(body, title, DialogButton.OKCancel, DialogIcon.Warning) == DialogResult.OK;
+'''
+if _msgbox_anchor not in _s:
+    raise SystemExit('native.4: MsgBox anchor missing')
+_s = _s.replace(_msgbox_anchor, _msgbox_replacement, 1)
+_n4_dialog_path.write_text(_s, encoding='utf-8')
+
+# 3) Plugin page: await the confirmation and keep the real install/uninstall result visible on-page
+#    instead of relying on a transient toast.
+_n4_vm_path = P / 'ViewModels' / 'PluginViewModel.cs'
+_s = _n4_vm_path.read_text(encoding='utf-8-sig')
+_s = _s.replace(
+'''    private bool ConfirmSteamRestart() =>
+        LuaToolsGui.Platform.MsgBox.Confirm(
+            Resources.Strings.Plugin_Confirm_RestartBody,
+            Resources.Strings.Plugin_Confirm_RestartCaption);''',
+'''    private Task<bool> ConfirmSteamRestartAsync() =>
+        LuaToolsGui.Platform.MsgBox.ConfirmAsync(
+            Resources.Strings.Plugin_Confirm_RestartBody,
+            Resources.Strings.Plugin_Confirm_RestartCaption);'''
+)
+_s = _s.replace('        if (!ConfirmSteamRestart()) return;', '        if (!await ConfirmSteamRestartAsync()) return;', 2)
+
+_old_install = r'''        try
+        {
+            var (ok, error) = await _installer.InstallAsync(MakeProgress());
+            _toast.Show(Resources.Strings.Plugin_Toast_Title, ok
+                ? Resources.Strings.Plugin_Toast_Installed
+                : string.Format(Resources.Strings.Plugin_Toast_InstallFailed, error), error: !ok);
+        }
+        finally
+        {
+            IsBusy = false;
+            await RefreshAsync(force: true);
+        }'''
+_new_install = r'''        string? persistentResult = null;
+        try
+        {
+            var (ok, error) = await _installer.InstallAsync(MakeProgress());
+            persistentResult = ok
+                ? Resources.Strings.Plugin_Toast_Installed
+                : string.Format(Resources.Strings.Plugin_Toast_InstallFailed, error);
+            _toast.Show(Resources.Strings.Plugin_Toast_Title, persistentResult, error: !ok);
+        }
+        catch (Exception ex)
+        {
+            persistentResult = $"Plugin install failed: {ex.Message}";
+            _toast.Show(Resources.Strings.Plugin_Toast_Title, persistentResult, error: true);
+        }
+        finally
+        {
+            IsBusy = false;
+            await RefreshAsync(force: true);
+            if (!string.IsNullOrWhiteSpace(persistentResult))
+                StatusLine = persistentResult;
+        }'''
+if _old_install not in _s:
+    raise SystemExit('native.4: PluginViewModel Install block missing')
+_s = _s.replace(_old_install, _new_install, 1)
+
+_old_uninstall = r'''        try
+        {
+            var (ok, error) = await _installer.UninstallAsync();
+            _toast.Show(Resources.Strings.Plugin_Toast_Title, ok
+                ? Resources.Strings.Plugin_Toast_Removed
+                : string.Format(Resources.Strings.Plugin_Toast_UninstallFailed, error), error: !ok);
+        }
+        finally
+        {
+            IsBusy = false;
+            await RefreshAsync(force: true);
+        }'''
+_new_uninstall = r'''        string? persistentResult = null;
+        try
+        {
+            var (ok, error) = await _installer.UninstallAsync();
+            persistentResult = ok
+                ? Resources.Strings.Plugin_Toast_Removed
+                : string.Format(Resources.Strings.Plugin_Toast_UninstallFailed, error);
+            _toast.Show(Resources.Strings.Plugin_Toast_Title, persistentResult, error: !ok);
+        }
+        catch (Exception ex)
+        {
+            persistentResult = $"Plugin uninstall failed: {ex.Message}";
+            _toast.Show(Resources.Strings.Plugin_Toast_Title, persistentResult, error: true);
+        }
+        finally
+        {
+            IsBusy = false;
+            await RefreshAsync(force: true);
+            if (!string.IsNullOrWhiteSpace(persistentResult))
+                StatusLine = persistentResult;
+        }'''
+if _old_uninstall not in _s:
+    raise SystemExit('native.4: PluginViewModel Uninstall block missing')
+_s = _s.replace(_old_uninstall, _new_uninstall, 1)
+_n4_vm_path.write_text(_s, encoding='utf-8')
+
+# 4) Real LTSP integration test. It is opt-in via LUATOOLS_REAL_LTSP_TEST=1 so normal unit tests stay fast.
+_test_dir = P.parent.parent / 'tests' / 'LuaToolsGui.Tests'
+_test_dir.mkdir(parents=True, exist_ok=True)
+(_test_dir / 'PluginInstallerLinuxIntegrationTests.cs').write_text(r'''using LuaToolsGui.Platform;
+using LuaToolsGui.Services;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace LuaToolsGui.Tests;
+
+public sealed class PluginInstallerLinuxIntegrationTests
+{
+    [Fact]
+    public async Task RealLtspRelease_InstallsFrontendAndCefMarker()
+    {
+        if (Environment.GetEnvironmentVariable("LUATOOLS_REAL_LTSP_TEST") != "1")
+            return;
+
+        string root = Path.Combine(Path.GetTempPath(), "luatools-steam-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "steam.sh"), "#!/bin/sh\nexit 0\n");
+
+        var settings = new SettingsService();
+        settings.SteamPathOverride = null;
+        var platform = new FakePlatform(root);
+        var steam = new SteamService(settings, platform);
+        var github = new GithubProxy();
+        var injector = new CefInjectorService(steam, NullLogger<CefInjectorService>.Instance);
+        var installer = new PluginInstallerService(steam, github, injector);
+
+        try
+        {
+            var (ok, error) = await installer.InstallAsync(progress: null);
+            Assert.True(ok, error);
+
+            string frontend = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "LuaToolsGui", "plugin", "public", "luatools.js");
+
+            Assert.True(File.Exists(frontend), $"Frontend not found: {frontend}");
+            Assert.True(File.Exists(Path.Combine(root, ".cef-enable-remote-debugging")),
+                "CEF marker was not created in the Steam root.");
+
+            var status = await installer.GetStatusAsync(force: true);
+            Assert.True(status.FrontendInstalled);
+            Assert.True(status.DllInstalled);
+
+            var (removed, removeError) = await installer.UninstallAsync();
+            Assert.True(removed, removeError);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private sealed class FakePlatform(string steamRoot) : IPlatformService
+    {
+        public string AppDataDir => Path.Combine(Path.GetTempPath(), "luatools-appdata-test");
+        public string TempDir => Path.GetTempPath();
+        public string SystemDir => "/usr/share";
+        public string SteamExeName => "steam.sh";
+        public void RegisterProtocol(string scheme, string exePath) { }
+        public string? DetectSteamPath() => steamRoot;
+        public void OpenUrl(string url) { }
+        public bool RevealInFileManager(string path) => true;
+        public bool ShowFolder(string path) => true;
+        public bool CopyToClipboard(string? text) => true;
+        public bool IsSteamRunning() => false;
+        public void StopSteam() { }
+        public bool StartSteam(string steamRoot) => true;
+        public bool ShowInExplorer(string? path) => true;
+    }
+}
+''', encoding='utf-8')
+
+print('LuaTools native.4 plugin reliability overlay applied')
