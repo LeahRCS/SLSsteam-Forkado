@@ -1,0 +1,47 @@
+name: LTSP Linux install diagnostic
+
+on:
+  push:
+    branches: [ "ci/luatools-native-1.3.3-native3" ]
+    paths:
+      - 'luatools-native3/ltsp-diagnostic-trigger.txt'
+      - '.github/workflows/ltsp-linux-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect current LTSP release asset
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import json, urllib.request
+          req=urllib.request.Request(
+              "https://api.github.com/repos/madoiscool/LTSP/releases/latest",
+              headers={"User-Agent":"LuaTools-Linux-Diagnostic","Accept":"application/vnd.github+json"})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              data=json.load(r)
+          print("tag=", data["tag_name"])
+          for a in data["assets"]:
+              print("asset", a["name"], "size", a["size"], "digest", a.get("digest"), "url", a["browser_download_url"])
+              if a["name"]=="plugin.zip":
+                  open("/tmp/plugin-url","w").write(a["browser_download_url"])
+          PY
+          URL="$(cat /tmp/plugin-url)"
+          curl -fL --retry 3 -A 'LuaTools-Linux-Diagnostic' "$URL" -o /tmp/plugin.zip
+          sha256sum /tmp/plugin.zip
+          echo '--- zip listing ---'
+          unzip -l /tmp/plugin.zip
+          echo '--- extracted tree ---'
+          rm -rf /tmp/plugin && mkdir -p /tmp/plugin
+          unzip -q /tmp/plugin.zip -d /tmp/plugin
+          find /tmp/plugin -maxdepth 5 -type f -printf '%P\n' | sort
+          echo '--- luatools.js candidates ---'
+          find /tmp/plugin -type f -iname 'luatools.js' -print
+          test "$(find /tmp/plugin -type f -iname 'luatools.js' | wc -l)" -ge 1
