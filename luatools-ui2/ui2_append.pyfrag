@@ -15,12 +15,10 @@ _ui_csproj.write_text(_ui_cs, encoding='utf-8')
 _ui_app = r'''<Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:LuaToolsGui"
-             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="LuaToolsGui.App"
              RequestedThemeVariant="Dark">
     <Application.Styles>
         <FluentTheme />
-        <materialIcons:MaterialIconStyles />
 
         <!-- Linux-native Fluent/Mica approximation. The Windows build gets its depth from WPF-UI Mica;
              on Linux we provide the visual hierarchy explicitly so transparent surfaces do not collapse
